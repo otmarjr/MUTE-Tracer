@@ -42,11 +42,14 @@ public aspect MUTETracer {
     }return fullName;
     }
     private boolean invocationComingFromHotspot(String callerClassName){
-    	return null != callerClassName && (callerClassName.endsWith(getTracedCallerName()) || invocationComingFromWrapperClass(callerClassName));	
+    	return null != callerClassName && (callerClassName.endsWith(getTracedCallerName()) || invocationComingFromWrapperClass(callerClassName)) || true;	
     }
     
     private boolean invocationComingFromWrapperClass(String callerClassName){
-    	return context.getWrapperPackages().stream().anyMatch(pkg -> callerClassName.startsWith(pkg));
+    	if (callerClassName == null)
+    		return false;
+    	else
+    		return context.getWrapperPackages().stream().anyMatch(pkg -> pkg != null && callerClassName.startsWith(pkg));
     }
     
     private boolean invokedMethodNotInIgnoredPackage(Signature invokedSignature){
@@ -145,13 +148,14 @@ public aspect MUTETracer {
         				throw new RuntimeException("Current instantiation context cannot be null. Check your aspect's configuration.");
         			}
         			
-        			getLogger().log(Level.FINEST, "Instance hashcode: " + instance.hashCode());
         			Object existingInstance = currentInstantiationContext.getOrDefault(instance.getClass(),null);
         			if (existingInstance == null){
-        				throw new RuntimeException("Current instantiation context does not contain instance of type " + curentClassName + ". Check your aspect's configuration.");
+        				getLogger().log(Level.SEVERE, "Current instantiation context does not contain instance of type " + curentClassName + ". Check your aspect's configuration.");
+        				firstInstanceBeingTracked = true;
+        				currentInstantiationContext.put(instance.getClass(), instance);
         			}
         			else{
-        				getLogger().log(Level.FINEST, "First instance of type " + curentClassName +"  hashcode: " + existingInstance.hashCode());
+        				getLogger().log(Level.FINEST, "First instance of type " + curentClassName + " loaded.");
         			}
         			
         			firstInstanceBeingTracked = instance == existingInstance;
@@ -162,8 +166,11 @@ public aspect MUTETracer {
         			String delimiter = firstMessage ? "" : ",";
                 	firstMessage = false;
 	        		String message = delimiter + sig.getDeclaringTypeName() + "." + sig.toString();
-	        		
-	        		writeMessage(message);
+	        	
+	        		if (invokedMethodNotInIgnoredPackage(sig))
+	        		{
+	        			writeMessage(message);
+	        		}
         		}
         	}
         }
@@ -183,10 +190,8 @@ public aspect MUTETracer {
         		currentInstantiationContext.putIfAbsent(instance.getClass(), instance);
         	}
         	
-        	getLogger().log(Level.FINER, sourceName + " invokedMethod - " + sourceName+  "- NotInIgnoredPackage? " + invokedMethodNotInIgnoredPackage(sig));
-        	if (invokedMethodNotInIgnoredPackage(sig) && currentInstantiationContext.get(instance.getClass()).equals(instance)){
-        		if (!invocationComingFromWrapperClass(sourceName))
-        			writeMessage(message);
+        	if (invokedMethodNotInIgnoredPackage(sig)){
+        		writeMessage(message);
         	}
         }
     }

@@ -1,7 +1,8 @@
 <aspectj>
 	<aspects>
-		<aspect name="br.pucminas.icei.MUTETracer"/>
+		<aspect name="br.pucminas.icei.FullTracer"/>
 	</aspects>
+	
 	<weaver>
 		<dump within="*..*" beforeandafter="true"/> 
 	</weaver>
