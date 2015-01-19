@@ -1,15 +1,21 @@
 package br.pucminas.icei;
 
+import java.io.BufferedWriter;
 import java.io.Closeable;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
-public class TracingContext implements Closeable {
+public class TracingContext {
 	
 	String tracedClassName = "";
+	Set<String> tracedFiles = new HashSet<String>();
 	
 	public void setTracedClassName(String className){
 		this.tracedClassName = className;
@@ -20,27 +26,9 @@ public class TracingContext implements Closeable {
 	}
 	
 	String getOutputDir() {
-		
-		String outputTraceDir = System.getProperty("trace.output.dir");
-		
-		if (outputTraceDir == null || outputTraceDir == ""){
-			//return System.getProperty("java.io.tmpdir");
-			return "C:\\windows\\temp\\mute_log\\";
-		}
-		
-		return outputTraceDir + "/" + getTracedClassName() + "_client_calls_trace.txt";
+		return "C:\\windows\\temp\\mute_log\\";
 	}
 	
-	// Used when a container class controls the execution but you do not want to get its events, like in jtreg's I18NResourceBundle class.
-	List<String> getWrapperPackages() {
-		String wrapperPackages = System.getProperty("wrapper.packages");
-		
-		if (wrapperPackages != null && wrapperPackages != ""){
-			return Arrays.asList(wrapperPackages.split(","));
-		}
-		
-		return new LinkedList<String>();
-	}
 	
 	List<String> getIgnoredNames() {
 		String ignoredNames = System.getProperty("ignored.names");
@@ -53,24 +41,29 @@ public class TracingContext implements Closeable {
 		
 	}
 	
-	FileWriter log = null;
-	String outputPath;
-	
-	public TracingContext() throws IOException{
-		outputPath = getOutputDir();
-		log = new FileWriter(outputPath);
-	}
-
-	public void write(String text) throws IOException {
-		log.write(text);
-		log.flush();
+	private String getFullTracePath() {
+		return getOutputDir() + this.getTracedClassName() + "_client_calls_trace.txt";
 	}
 	
-	@Override
-	public void close() throws IOException {
-		if (log != null){
-			log.close();
+	private void clearCurrentTraceFile() {
+		File trace = new File(getFullTracePath());
+		trace.delete();
+		System.out.println("===== DELETING FILE " + getFullTracePath());
+		
+	}
+	public void write(String text, String fromClassName) throws IOException {
+		if (!tracedFiles.contains(fromClassName)){
+			setTracedClassName(fromClassName);
+			clearCurrentTraceFile();
+			tracedFiles.add(fromClassName);
 		}
+		
+		String path = getFullTracePath();
+		PrintWriter out = new PrintWriter(new FileWriter(path, true),true);
+		out.write(text);
+	    out.close();
+	    
+	    System.out.println("===== WRITING MESSAGE TO FILE " + getFullTracePath() + "message: " + text);
 	}
 	
 	

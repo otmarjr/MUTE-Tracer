@@ -21,12 +21,7 @@ public aspect MUTETracer {
 	
     private TracingContext getContext() {
     		if (context == null){
-    			 try {
-					context = new TracingContext();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+    			context = new TracingContext();
     		}
     		return context;
     }
@@ -34,11 +29,12 @@ public aspect MUTETracer {
     private String getTracedCallerName() {
     		String fullName = getContext().getTracedClassName();
     		if (fullName.contains(".")){
-    		String[] parts = fullName.split(".");
-    		
-    		return parts[parts.length-1];
-    }return fullName;
+    			String[] parts = fullName.split(".");
+    			return parts[parts.length-1];
+    		}
+    		return fullName;
     }
+    
     private boolean invocationComingFromHotspot(String callerClassName){
     	return null != callerClassName && callerClassName.endsWith(getTracedCallerName());	
     }
@@ -139,8 +135,7 @@ public aspect MUTETracer {
                 	String message = delimiter+sig.getDeclaringTypeName() + "." + sig.toString();
 	        		
 	        		try {
-	        			getContext().setTracedClassName(thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
-						getContext().write(message);
+						getContext().write(message,thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
 					} catch (IOException e) {
 						e.printStackTrace();
 						System.out.println(message);
@@ -174,8 +169,7 @@ public aspect MUTETracer {
         	
         	if (invokedMethodNotInIgnoredPackage(sig) && instance.getClass() != null && currentInstantiationContext.get(instance.getClass()).equals(instance)){
         		try {
-        			getContext().setTracedClassName(thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
-        			getContext().write(message);
+        			getContext().write(message,thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
 				} catch (IOException e) {
 					e.printStackTrace();
 					System.out.println(message);
