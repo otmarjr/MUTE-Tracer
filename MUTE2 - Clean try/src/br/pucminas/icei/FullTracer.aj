@@ -10,7 +10,7 @@ public aspect FullTracer {
     	(
     	   execution (* *..*(..))
     			&& 
-		!cflow(within(MUTETracer))
+		!cflow(within(FullTracer))
 		    			&& 
 		!cflow(within(FullTracer))
 		);

@@ -9,14 +9,14 @@ import java.util.List;
 
 public class TracingContext implements Closeable {
 	
+	String tracedClassName = "";
+	
+	public void setTracedClassName(String className){
+		this.tracedClassName = className;
+	}
+	
 	String getTracedClassName() {
-		String tracedClassname = System.getProperty("traced.class");
-		
-		if (tracedClassname == null || tracedClassname == ""){
-			throw new RuntimeException("You must suply the caller class name via D-traced.class=<name> argument");
-		}
-		
-		return tracedClassname;
+		return tracedClassName;
 	}
 	
 	String getOutputDir() {
@@ -24,7 +24,8 @@ public class TracingContext implements Closeable {
 		String outputTraceDir = System.getProperty("trace.output.dir");
 		
 		if (outputTraceDir == null || outputTraceDir == ""){
-			return System.getProperty("java.io.tmpdir");
+			//return System.getProperty("java.io.tmpdir");
+			return "C:\\windows\\temp\\mute_log\\";
 		}
 		
 		return outputTraceDir + "/" + getTracedClassName() + "_client_calls_trace.txt";

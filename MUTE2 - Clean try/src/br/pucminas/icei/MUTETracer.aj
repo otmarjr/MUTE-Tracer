@@ -8,22 +8,20 @@ import java.util.Map;
 import java.util.Stack;
 
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import org.aspectj.lang.Signature;
 
 public aspect MUTETracer {
-	List<String> currentSequence = new LinkedList<>();
+	List<String> currentSequence = new LinkedList<String>();
+
 	TracingContext context;
 	Map<Object, Object> currentInstantiationContext;
-	Stack<String> clientMethodStack = new Stack<>();
-	Stack<Map<Object,Object>> instantiationContextStack = new Stack<>();
-	boolean firstMessage = true;
+	Stack<String> clientMethodStack = new Stack<String>();
+	Stack<Map<Object,Object>> instantiationContextStack = new Stack<Map<Object,Object>>();
+	boolean isFirstCall = true;
+	
     private TracingContext getContext() {
     		if (context == null){
     			 try {
-    				 
 					context = new TracingContext();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
@@ -42,37 +40,30 @@ public aspect MUTETracer {
     }return fullName;
     }
     private boolean invocationComingFromHotspot(String callerClassName){
-    	return null != callerClassName && (callerClassName.endsWith(getTracedCallerName()) || invocationComingFromWrapperClass(callerClassName)) || true;	
-    }
-    
-    private boolean invocationComingFromWrapperClass(String callerClassName){
-    	if (callerClassName == null)
-    		return false;
-    	else
-    		return context.getWrapperPackages().stream().anyMatch(pkg -> pkg != null && callerClassName.startsWith(pkg));
+    	return null != callerClassName && callerClassName.endsWith(getTracedCallerName());	
     }
     
     private boolean invokedMethodNotInIgnoredPackage(Signature invokedSignature){
     	if (invokedSignature != null){
     		final String declaringTypeName = invokedSignature.getDeclaringTypeName();
-        	return declaringTypeName != null && !context.getIgnoredNames().stream().anyMatch(igSig -> declaringTypeName.startsWith(igSig));
+    		
+    		for (String igSig : context.getIgnoredNames()){
+    			if (declaringTypeName.startsWith(igSig))
+    				return false;
+    		}
+        	
+    		return true;
     	} 
     	
     	return false;
     }
     
-    private Logger getLogger() {
-    	return Logger.getLogger(MUTETracer.class.getName());
+    private void handleInstantiationContext(){
+		if (currentInstantiationContext != null){
+			instantiationContextStack.push(currentInstantiationContext);
+		}
+		currentInstantiationContext = new HashMap<Object, Object>();
     }
-    
-    private void writeMessage(String message){
-    	try {
-    		getContext().write(message);
-			getLogger().log(Level.FINE, "Writting " + message + " to trace.");
-		} catch (IOException e) {
-			getLogger().log(Level.SEVERE, "Error while trying to trace message ' " + message + "'.", e);
-		}	
-	}
     
     pointcut anyClientMethod() :
     	(
@@ -81,30 +72,23 @@ public aspect MUTETracer {
 		!cflow(within(MUTETracer))
 		);
     
+    
     before() : anyClientMethod() {
+    	getContext().setTracedClassName(thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
     	String sourceName = thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getCanonicalName();
     	if (invocationComingFromHotspot(sourceName)){
     		if (currentInstantiationContext != null){
-    			getLogger().log(Level.FINE, "Pushing current instantiation context to stack....");
     			instantiationContextStack.push(currentInstantiationContext);
     		}
-    		currentInstantiationContext = new HashMap<>();
-    	}
-    	else{
-    		getLogger().log(Level.FINE, "Ignoring client method call...not a hot spot " + sourceName  + " <detected class> != " + context.getTracedClassName() + " <traced class>");
+    		currentInstantiationContext = new HashMap<Object, Object>();
     	}
     }
     
     after() : anyClientMethod() {
+    	getContext().setTracedClassName(thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
     	String sourceName = thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getCanonicalName();
     	if (invocationComingFromHotspot(sourceName)){
-    		if (!instantiationContextStack.isEmpty()){
-    			getLogger().log(Level.FINE, "Restoring current instantiation context...");
-    		}
-    		else{
-    			currentInstantiationContext = null;
-    			getLogger().log(Level.FINE, "Reseting to null instantiation context...");
-    		}
+    		handleInstantiationContext();
     	}
     }
     
@@ -116,14 +100,11 @@ public aspect MUTETracer {
     
     
     before() : jdkCall(){
-    	String sourceName = thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getCanonicalName();
-	    	if (invocationComingFromHotspot(sourceName) && invokedMethodNotInIgnoredPackage(thisJoinPointStaticPart.getSignature())){
-	    	Object instance = thisJoinPoint.getTarget();
-	    	if (instance!=null){
-	    		String curentClassName = instance.getClass() == null ? "<NULL CLASS>" : instance.getClass().getName();
-    			getLogger().log(Level.FINE, "Putting if absent instance of type " +curentClassName+ "is the first on current context.");
-	    		currentInstantiationContext.putIfAbsent(instance.getClass(), instance);
-	    	}
+    	Object instance = thisJoinPoint.getTarget();
+    	if (instance!=null){
+    		handleInstantiationContext();
+    		if (instance.getClass() != null)
+    			currentInstantiationContext.putIfAbsent(instance.getClass(), instance);
     	}
     }
     
@@ -131,68 +112,76 @@ public aspect MUTETracer {
     	
         Signature sig = thisJoinPointStaticPart.getSignature();
         String sourceName = thisJoinPointStaticPart.getSourceLocation().getWithinType().getCanonicalName();
-        getLogger().log(Level.FINER, "After receiving call to " + sig.toString());
+        
         if (invocationComingFromHotspot(sourceName)){
         	if (invokedMethodNotInIgnoredPackage(sig)){
-        		
+        		handleInstantiationContext();
         		Object instance = thisJoinPoint.getTarget();
         		boolean isInstanceMethod = instance != null;
         		
         		boolean firstInstanceBeingTracked = false;
         		
-        		if (isInstanceMethod){
-        			String curentClassName = instance.getClass() == null ? "<NULL CLASS>" : instance.getClass().getName();
-        			
-        			getLogger().log(Level.FINEST, "Checking if instance of type " +curentClassName+ "is the first on current context.");
-        			if (currentInstantiationContext == null){
-        				throw new RuntimeException("Current instantiation context cannot be null. Check your aspect's configuration.");
-        			}
-        			
-        			Object existingInstance = currentInstantiationContext.getOrDefault(instance.getClass(),null);
-        			if (existingInstance == null){
-        				getLogger().log(Level.SEVERE, "Current instantiation context does not contain instance of type " + curentClassName + ". Check your aspect's configuration.");
-        				firstInstanceBeingTracked = true;
-        				currentInstantiationContext.put(instance.getClass(), instance);
-        			}
-        			else{
-        				getLogger().log(Level.FINEST, "First instance of type " + curentClassName + " loaded.");
-        			}
-        			
-        			firstInstanceBeingTracked = instance == existingInstance;
+        		if (isInstanceMethod && instance.getClass() != null && currentInstantiationContext.get(instance.getClass()) != null){
+        			firstInstanceBeingTracked = currentInstantiationContext.get(instance.getClass()).equals(instance);
         		}
         		
-        		getLogger().log(Level.FINER, sourceName + " isFirstInstanceBeingTracked? " + firstInstanceBeingTracked + " instanceMethod? " + isInstanceMethod);
         		if (firstInstanceBeingTracked || !isInstanceMethod){
-        			String delimiter = firstMessage ? "" : ",";
-                	firstMessage = false;
-	        		String message = delimiter + sig.getDeclaringTypeName() + "." + sig.toString();
-	        	
-	        		if (invokedMethodNotInIgnoredPackage(sig))
-	        		{
-	        			writeMessage(message);
-	        		}
+        			String delimiter = "";
+                	
+                	if (isFirstCall){
+                		delimiter = "";
+                		isFirstCall = false;
+                	}
+                	else{
+                		delimiter = ",";
+                	}
+                	
+                	String message = delimiter+sig.getDeclaringTypeName() + "." + sig.toString();
+	        		
+	        		try {
+	        			getContext().setTracedClassName(thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
+						getContext().write(message);
+					} catch (IOException e) {
+						e.printStackTrace();
+						System.out.println(message);
+					}	
         		}
         	}
+        	
         }
     }
-    
     
     after() returning(Object instance) : jdkConstructor() {
     	Signature sig = thisJoinPointStaticPart.getSignature();
         String sourceName = thisJoinPointStaticPart.getSourceLocation().getWithinType().getCanonicalName();
-        getLogger().log(Level.FINER, "After creating new instance of " + sig.toString());
         if (invocationComingFromHotspot(sourceName)){
+        	handleInstantiationContext();        	
+        	String delimiter = "";
         	
-        	String delimiter = firstMessage ? "" : ",";
-        	firstMessage = false;
-        	String message = delimiter + "new " + sig.getDeclaringTypeName() + "." + sig.toString();
+        	if (isFirstCall){
+        		delimiter = "";
+        		isFirstCall = false;
+        	}
+        	else{
+        		delimiter = ",";
+        	}
+        	
+        	String message = delimiter+"new " + sig.getDeclaringTypeName() + "." + sig.toString();
         	if (instance!=null){
-        		currentInstantiationContext.putIfAbsent(instance.getClass(), instance);
+        		if (instance.getClass() != null)
+        			currentInstantiationContext.putIfAbsent(instance.getClass(), instance);
         	}
         	
-        	if (invokedMethodNotInIgnoredPackage(sig)){
-        		writeMessage(message);
+        	if (invokedMethodNotInIgnoredPackage(sig) && instance.getClass() != null && currentInstantiationContext.get(instance.getClass()).equals(instance)){
+        		try {
+        			getContext().setTracedClassName(thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
+        			getContext().write(message);
+				} catch (IOException e) {
+					e.printStackTrace();
+					System.out.println(message);
+				}	
         	}
+        	
         }
     }
 }
