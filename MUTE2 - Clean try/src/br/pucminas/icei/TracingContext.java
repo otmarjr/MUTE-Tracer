@@ -26,29 +26,30 @@ public class TracingContext {
 	}
 	
 	String getOutputDir() {
-		return "C:\\windows\\temp\\mute_log\\";
+		String systemTempDir = System.getProperty("java.io.tmpdir");
+		String muteDir = systemTempDir + "/mute_log/";
+		
+		File tempDir = new File(muteDir);
+		
+		if (!tempDir.exists()){
+			tempDir.mkdir();
+		}
+		return tempDir.getAbsolutePath();
 	}
 	
 	
 	List<String> getIgnoredNames() {
-		String ignoredNames = System.getProperty("ignored.names");
-		
-		if (ignoredNames != null && ignoredNames != ""){
-			return Arrays.asList(ignoredNames.split(","));
-		}
-		
-		return new LinkedList<String>();
+		return new LinkedList<String>() {{add("java.util.Enumeration"); add("java.io.PrintStream");}};
 		
 	}
 	
 	private String getFullTracePath() {
-		return getOutputDir() + this.getTracedClassName() + "_client_calls_trace.txt";
+		return getOutputDir() + File.separator + this.getTracedClassName() + "_client_calls_trace.txt";
 	}
 	
 	private void clearCurrentTraceFile() {
 		File trace = new File(getFullTracePath());
 		trace.delete();
-		System.out.println("===== DELETING FILE " + getFullTracePath());
 		
 	}
 	public void write(String text, String fromClassName) throws IOException {
@@ -62,8 +63,7 @@ public class TracingContext {
 		PrintWriter out = new PrintWriter(new FileWriter(path, true),true);
 		out.write(text);
 	    out.close();
-	    
-	    System.out.println("===== WRITING MESSAGE TO FILE " + getFullTracePath() + "message: " + text);
+	    System.out.println("===> Written '" + text + "' to file " + path);
 	}
 	
 	

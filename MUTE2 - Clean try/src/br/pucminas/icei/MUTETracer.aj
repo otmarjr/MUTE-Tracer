@@ -8,7 +8,9 @@ import java.util.Map;
 import java.util.Stack;
 
 
+
 import org.aspectj.lang.Signature;
+import org.omg.PortableServer.CurrentOperations;
 
 public aspect MUTETracer {
 	List<String> currentSequence = new LinkedList<String>();
@@ -54,12 +56,6 @@ public aspect MUTETracer {
     	return false;
     }
     
-    private void handleInstantiationContext(){
-		if (currentInstantiationContext != null){
-			instantiationContextStack.push(currentInstantiationContext);
-		}
-		currentInstantiationContext = new HashMap<Object, Object>();
-    }
     
     pointcut anyClientMethod() :
     	(
@@ -84,7 +80,7 @@ public aspect MUTETracer {
     	getContext().setTracedClassName(thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getName());
     	String sourceName = thisEnclosingJoinPointStaticPart.getSourceLocation().getWithinType().getCanonicalName();
     	if (invocationComingFromHotspot(sourceName)){
-    		handleInstantiationContext();
+    		currentInstantiationContext = instantiationContextStack.isEmpty() ? null : instantiationContextStack.pop();
     	}
     }
     
@@ -98,7 +94,6 @@ public aspect MUTETracer {
     before() : jdkCall(){
     	Object instance = thisJoinPoint.getTarget();
     	if (instance!=null){
-    		handleInstantiationContext();
     		if (instance.getClass() != null)
     			currentInstantiationContext.putIfAbsent(instance.getClass(), instance);
     	}
@@ -111,7 +106,6 @@ public aspect MUTETracer {
         
         if (invocationComingFromHotspot(sourceName)){
         	if (invokedMethodNotInIgnoredPackage(sig)){
-        		handleInstantiationContext();
         		Object instance = thisJoinPoint.getTarget();
         		boolean isInstanceMethod = instance != null;
         		
@@ -129,7 +123,7 @@ public aspect MUTETracer {
                 		isFirstCall = false;
                 	}
                 	else{
-                		delimiter = ",";
+                		delimiter = ";";
                 	}
                 	
                 	String message = delimiter+sig.getDeclaringTypeName() + "." + sig.toString();
@@ -150,7 +144,6 @@ public aspect MUTETracer {
     	Signature sig = thisJoinPointStaticPart.getSignature();
         String sourceName = thisJoinPointStaticPart.getSourceLocation().getWithinType().getCanonicalName();
         if (invocationComingFromHotspot(sourceName)){
-        	handleInstantiationContext();        	
         	String delimiter = "";
         	
         	if (isFirstCall){
@@ -158,13 +151,14 @@ public aspect MUTETracer {
         		isFirstCall = false;
         	}
         	else{
-        		delimiter = ",";
+        		delimiter = ";";
         	}
         	
         	String message = delimiter+"new " + sig.getDeclaringTypeName() + "." + sig.toString();
         	if (instance!=null){
-        		if (instance.getClass() != null)
+        		if (instance.getClass() != null){
         			currentInstantiationContext.putIfAbsent(instance.getClass(), instance);
+        		}
         	}
         	
         	if (invokedMethodNotInIgnoredPackage(sig) && instance.getClass() != null && currentInstantiationContext.get(instance.getClass()).equals(instance)){
